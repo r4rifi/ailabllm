@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ailabllm - Multi-Modal Lab Report Interpreter</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.6; }
+      100% { transform: scale(0.95); opacity: 1; }
+    }
+    .pulse-indicator {
+      animation: pulse-ring 2.5s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col antialiased">
+
+  <header class="bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 px-6 py-4">
+    <div class="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <!-- Logo and branding info -->
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-extrabold text-xl shadow-lg shadow-blue-500/20">
+          AL
+        </div>
+        <div>
+          <h1 class="text-xl font-extrabold tracking-tight text-slate-900">Ailabllm 3.5</h1>
+          <p class="text-xs text-slate-500 font-medium">AI Powered Lab Report Interpreter</p>
+	  <p class="text-xs text-slate-500 font-medium">Developed by Syed Rafaqat</p>
+        </div>
+      </div>
+
+      <!-- Active Connection & Model Control Bar -->
+      <div class="bg-slate-100/90 border border-slate-200 rounded-2xl p-2.5 flex flex-wrap md:flex-nowrap items-center gap-3 shadow-inner w-full lg:w-auto">
+        <div class="flex flex-col min-w-[140px] w-full md:w-auto">
+          <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-1">Engine API Key</span>
+          <input type="password" id="apiKey" class="bg-white border border-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500" placeholder="Workspace Key (Auto)" onchange="saveApiKey()">
+        </div>
+        <div class="flex flex-col min-w-[150px] w-full md:w-auto">
+          <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-1">Active Model</span>
+          <select id="modelSelection" class="bg-white border border-slate-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500">
+            <option value="gemini-3-flash-preview">gemini-3-flash-preview (Default)</option>
+            <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+            <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5 h-10 w-full md:w-auto">
+          <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-amber-500 pulse-indicator"></span>
+          <span id="statusText" class="text-xs font-bold text-slate-600">Initializing...</span>
+        </div>
+        <button onclick="testConnection()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition duration-200 h-10 w-full md:w-auto flex items-center justify-center shadow-md shadow-blue-500/10">
+          Verify Key
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
+    
+    <!-- LEFT PANEL: Upload, OCR Extraction, and Patient Profiles (lg:col-span-4) -->
+    <section class="lg:col-span-4 flex flex-col gap-5 h-full">
+      <!-- File upload section supporting multi-modal formats -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-extrabold text-slate-800 uppercase tracking-wider">1. Lab Report File</h2>
+          <span class="text-[11px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 rounded-full">PDF & Images</span>
+        </div>
+        <p class="text-xs text-slate-500 mb-4">Directly upload your lab report (PDF/JPG/PNG). Gemini will scan and auto-extract patient details.</p>
+        
+        <div class="border-2 border-dashed border-slate-200 hover:border-blue-500 rounded-xl p-6 text-center transition cursor-pointer relative" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <input type="file" id="fileInput" class="hidden" accept=".pdf,image/png,image/jpeg,image/jpg,image/webp" onchange="handleFileSelect(event)">
+          <div class="flex flex-col items-center gap-2">
+            <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+            <p class="text-xs font-semibold text-slate-700" id="uploadStatus">Click to select or drop report here</p>
+            <p class="text-[10px] text-slate-400">PDF, PNG, JPEG, WEBP files up to 10MB</p>
+          </div>
+        </div>
+
+        <!-- Selected file active details card -->
+        <div id="fileInfoCard" class="hidden mt-4 bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div id="fileTypeIcon" class="p-2 bg-blue-100 rounded-lg text-blue-600 flex-shrink-0">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            </div>
+            <div class="truncate">
+              <p class="text-xs font-bold text-slate-700 truncate" id="fileNameText">report.pdf</p>
+              <p class="text-[10px] text-slate-400" id="fileSizeText">240 KB</p>
+            </div>
+          </div>
+          <button onclick="clearSelectedFile()" class="p-1 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-200 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Patient metadata profiling box -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm relative overflow-hidden flex-1 flex flex-col">
+        <!-- Overlay loader displayed while extracting data with Gemini -->
+        <div id="extractionLoader" class="hidden absolute inset-0 bg-white/95 z-20 flex flex-col items-center justify-center p-6 text-center">
+          <div class="spinner mb-3"></div>
+          <p class="text-xs font-bold text-slate-800">Auto-Extracting Patient Profile...</p>
+          <p class="text-[10px] text-slate-400 max-w-xs mt-1">Gemini is processing report text parameters and extracting medical patient metadata.</p>
+        </div>
+
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-extrabold text-slate-800 uppercase tracking-wider">2. Patient Profile</h2>
+          <button onclick="loadDemoDataset()" class="text-[11px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg transition">Load Demo Case</button>
+        </div>
+
+        <div class="space-y-4 flex-1 overflow-y-auto pr-1">
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Patient Name</label>
+            <input type="text" id="patientName" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none" placeholder="e.g., Jonathan Vance">
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Age</label>
+              <input type="text" id="age" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none" placeholder="e.g., 54">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Gender</label>
+              <select id="gender" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none bg-white">
+                <option value="">Select</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Child">Child</option>
+                <option value="Not provided">Not provided</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Report Date</label>
+            <input type="date" id="reportDate" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Reported Symptoms & History</label>
+            <textarea id="symptoms" rows="3" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none resize-none" placeholder="e.g., Daily fatigue, lightheadedness, currently taking iron..."></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MIDDLE PANEL: Document Preview & Live Interpretation Output (lg:col-span-5) -->
+    <section class="lg:col-span-5 flex flex-col gap-3 h-full min-h-0">
+      
+      <!-- 3. Original Report Preview Block -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col h-[48%] min-h-0 relative">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-3">
+            <h2 class="text-sm font-extrabold text-slate-800 uppercase tracking-wider">3. Original Report Preview</h2>
+            <!-- View Mode Switch Tabs -->
+            <div class="flex bg-slate-100 rounded-lg p-0.5 text-[10px]" id="previewTabs">
+              <button onclick="switchPreviewTab('doc')" id="tab-doc" class="px-2 py-1 rounded-md font-bold text-slate-600 bg-white shadow-sm transition">Document View</button>
+              <button onclick="switchPreviewTab('text')" id="tab-text" class="px-2 py-1 rounded-md font-bold text-slate-400 transition">Extracted Text</button>
+            </div>
+          </div>
+          <button onclick="clearReportText()" class="text-[10px] font-bold text-slate-400 hover:text-slate-600 transition">Clear Text</button>
+        </div>
+
+        <div class="flex-1 min-h-0 w-full relative">
+          <!-- Live Document Render Window -->
+          <div id="view-doc" class="w-full h-full flex flex-col justify-center items-center bg-slate-50 border border-slate-100 rounded-xl overflow-hidden p-2">
+            <div id="docFallback" class="text-center p-4">
+              <svg class="w-10 h-10 text-slate-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              <p class="text-xs text-slate-400 font-medium">No original document loaded yet</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">Upload a PDF or Image in Section 1 to preview here</p>
+            </div>
+            <div id="docViewer" class="hidden w-full h-full flex items-center justify-center">
+              <!-- Dynamic viewer node injected here -->
+            </div>
+          </div>
+
+          <!-- Plaintext Transcribed Fallback Editor -->
+          <div id="view-text" class="hidden w-full h-full">
+            <textarea id="reportText" class="w-full h-full border border-slate-200 rounded-xl p-3 text-xs mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none resize-none bg-slate-50/50" placeholder="Diagnostic indicators and quantitative clinical metrics values..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Health Interpretation Block -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col h-[52%] min-h-0 relative">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-extrabold text-slate-800 uppercase tracking-wider">4. Health Interpretation</h2>
+          <div class="flex gap-2">
+            <button onclick="downloadSummary()" class="text-[11px] font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+              Save Plaintext
+            </button>
+            <button onclick="resetWorkspace()" class="text-[11px] font-bold text-slate-500 hover:text-slate-700 hover:underline">Reset</button>
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <button onclick="analyzeReport()" id="analyzeBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-lg shadow-emerald-600/10 transition-all flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+            Execute Lab Interpretation
+          </button>
+        </div>
+
+        <!-- Output Display box -->
+        <div id="interpretationResult" class="flex-1 overflow-y-auto border border-slate-100 rounded-xl p-4 bg-slate-50/50 text-xs leading-relaxed text-slate-700 whitespace-pre-wrap">Please insert your Gemini API Key above, upload or paste laboratory results, provide symptoms, and press "Execute Lab Interpretation".</div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL: Continuous Care Chatbot Companion (lg:col-span-3) -->
+    <section class="lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col h-full min-h-0">
+      <div class="mb-2">
+        <h2 class="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Care Chat Companion</h2>
+        <p class="text-xs text-slate-500">Ask clarification queries about reference thresholds, health variables, or recommended follow-up.</p>
+      </div>
+
+      <!-- Chat logs element -->
+      <div id="chatMessages" class="flex-1 overflow-y-auto bg-slate-50 border border-slate-100 rounded-xl p-3 my-3 space-y-3 flex flex-col">
+        <div class="msg ai bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 self-start max-w-[90%]">
+          Hello! I'm your continuous care companion. Let's start by interpreting your lab results. After that, you can query specific indicators or recommendations here.
+        </div>
+      </div>
+
+      <!-- User input tools -->
+      <div class="space-y-2">
+        <textarea id="chatQuestion" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none resize-none" rows="2" placeholder="Ask details about indicators..."></textarea>
+        <div class="flex gap-2">
+          <button onclick="sendChatMessage()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 rounded-lg transition">Send Query</button>
+          <button onclick="clearChat()" class="bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 font-bold text-xs px-3 rounded-lg transition">Clear</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <script>
+    // Injected by platform at runtime if left empty
+    const apiKey = "";
+
+    // Clinical core system guardrails prompt defining health and visual requirements
+    const SYSTEM_PROMPT = `You are Ailabllm, an AI Lab Report Interpreter and Personal Health Assistant.
+Analyze laboratory reports and explain the results in simple, empathetic, patient-friendly language.
+You are not a doctor. Do not diagnose disease. Do not prescribe medication. Do not replace professional medical advice.
+Always cite standard scientific reference ranges for every interpretation, and clearly explain what those measurements indicate.
+Structure your interpretation with clear, beautifully readable headers:
+1. PATIENT SUMMARY DASHBOARD
+2. DETECTED ABNORMALITIES (Normal, Borderline, Mildly, Moderately, or Severely abnormal)
+3. METABOLIC / BIOCHEMICAL HEALTH IMPACTS
+4. ACTIONABLE HEALTH & LIFESTYLE ADVICE
+5. CLINICAL QUESTIONS TO DISCUSS WITH YOUR DOCTOR
+6. CRITICAL DISCLAIMER`;
+
+    // Global application configuration and state parameters
+    let state = {
+      apiKey: localStorage.getItem('ailab_key') || "",
+      selectedFile: null, // Holds { name, size, type, base64, objectUrl } data
+      lastAnalysis: "",
+      patientInfoExtracted: false
+    };
+
+    window.onload = function() {
+      // Sync UI with cached or platform key coordinates
+      if (state.apiKey) {
+        document.getElementById('apiKey').value = state.apiKey;
+        setConnectedUI(true, "Custom Key Saved");
+      } else if (apiKey) {
+        setConnectedUI(true, "Workspace Active");
+      } else {
+        setConnectedUI(false, "No Key Detected");
+      }
+      
+      // Configure drag & drop listeners for multi-modal drops
+      const dropZone = document.getElementById('dropZone');
+      dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('border-blue-500', 'bg-blue-50/20'); });
+      dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('border-blue-500', 'bg-blue-50/20'); });
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-blue-500', 'bg-blue-50/20');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          processFile(e.dataTransfer.files[0]);
+        }
+      });
+    };
+
+    function triggerToast(message, type = "info") {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `p-4 rounded-xl shadow-lg text-white text-xs font-bold pointer-events-auto transition-all duration-300 transform translate-y-2 opacity-0 flex items-center gap-2`;
+      
+      if (type === "success") {
+        toast.className += " bg-emerald-600 border border-emerald-500";
+      } else if (type === "error") {
+        toast.className += " bg-rose-600 border border-rose-500";
+      } else if (type === "warning") {
+        toast.className += " bg-amber-500 border border-amber-400";
+      } else {
+        toast.className += " bg-blue-600 border border-blue-500";
+      }
+
+      toast.innerHTML = `
+        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <span>${message}</span>
+      `;
+      
+      container.appendChild(toast);
+      
+      // Animate entry
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 50);
+
+      // Dismiss automatically
+      setTimeout(() => {
+        toast.classList.add('translate-y-2', 'opacity-0');
+        setTimeout(() => toast.remove(), 300);
+      }, 5000);
+    }
+
+    // Save and update storage credentials
+    function saveApiKey() {
+      const key = document.getElementById('apiKey').value.trim();
+      state.apiKey = key;
+      localStorage.setItem('ailab_key', key);
+      if (key) {
+        setConnectedUI(true, "Custom Key Saved");
+        triggerToast("Custom API Credentials saved successfully.", "success");
+      } else if (apiKey) {
+        setConnectedUI(true, "Workspace Active");
+        triggerToast("Swapped back to workspace integration.", "info");
+      } else {
+        setConnectedUI(false, "Enter Key");
+      }
+    }
+
+    function setConnectedUI(isConnected, text) {
+      const dot = document.getElementById('statusDot');
+      const label = document.getElementById('statusText');
+      if (isConnected) {
+        dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+        label.textContent = text;
+      } else {
+        dot.className = "w-2.5 h-2.5 rounded-full bg-amber-500 pulse-indicator";
+        label.textContent = text;
+      }
+    }
+
+    function switchPreviewTab(tab) {
+      const tabDoc = document.getElementById('tab-doc');
+      const tabText = document.getElementById('tab-text');
+      const viewDoc = document.getElementById('view-doc');
+      const viewText = document.getElementById('view-text');
+      
+      if (tab === 'doc') {
+        tabDoc.className = "px-2 py-1 rounded-md font-bold text-slate-600 bg-white shadow-sm transition";
+        tabText.className = "px-2 py-1 rounded-md font-bold text-slate-400 transition";
+        viewDoc.classList.remove('hidden');
+        viewText.classList.add('hidden');
+      } else {
+        tabDoc.className = "px-2 py-1 rounded-md font-bold text-slate-400 transition";
+        tabText.className = "px-2 py-1 rounded-md font-bold text-slate-600 bg-white shadow-sm transition";
+        viewDoc.classList.add('hidden');
+        viewText.classList.remove('hidden');
+      }
+    }
+
+    function updateReportPreview() {
+      const viewer = document.getElementById('docViewer');
+      const fallback = document.getElementById('docFallback');
+      
+      if (state.selectedFile && state.selectedFile.objectUrl) {
+        fallback.classList.add('hidden');
+        viewer.classList.remove('hidden');
+        
+        const type = state.selectedFile.type;
+        if (type.startsWith('image/')) {
+          viewer.innerHTML = `<img src="${state.selectedFile.objectUrl}" class="max-w-full max-h-full object-contain rounded-lg shadow-sm border border-slate-200">`;
+        } else if (type === 'application/pdf') {
+          viewer.innerHTML = `<iframe src="${state.selectedFile.objectUrl}#toolbar=0" class="w-full h-full rounded-lg border-0"></iframe>`;
+        } else {
+          viewer.innerHTML = `<div class="p-4 text-center text-xs text-slate-500">
+            <p class="font-bold">${esc(state.selectedFile.name)}</p>
+            <p class="text-[10px] text-slate-400 mt-1">Generic file preview loaded. Please view the Extracted Text tab.</p>
+          </div>`;
+        }
+        switchPreviewTab('doc');
+      } else {
+        viewer.innerHTML = '';
+        viewer.classList.add('hidden');
+        fallback.classList.remove('hidden');
+        switchPreviewTab('text');
+      }
+    }
+
+    // Handles document loading profiles
+    function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (file) {
+        processFile(file);
+      }
+    }
+
+    function processFile(file) {
+      if (file.size > 10 * 1024 * 1024) {
+        triggerToast("File exceeds the maximum limit of 10MB.", "error");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const fullBase64 = e.target.result;
+        const base64Data = fullBase64.split(',')[1];
+        
+        // Revoke previous URL to prevent memory leakage
+        if (state.selectedFile && state.selectedFile.objectUrl) {
+          URL.revokeObjectURL(state.selectedFile.objectUrl);
+        }
+
+        const objectUrl = URL.createObjectURL(file);
+        
+        state.selectedFile = {
+          name: file.name,
+          size: (file.size / 1024).toFixed(1) + " KB",
+          type: file.type || "application/pdf",
+          base64: base64Data,
+          objectUrl: objectUrl
+        };
+
+        // Render type indicators
+        const fileIcon = document.getElementById('fileTypeIcon');
+        if (file.type.startsWith('image/')) {
+          fileIcon.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>`;
+        } else {
+          fileIcon.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>`;
+        }
+
+        document.getElementById('fileNameText').textContent = file.name;
+        document.getElementById('fileSizeText').textContent = state.selectedFile.size;
+        document.getElementById('fileInfoCard').classList.remove('hidden');
+        document.getElementById('uploadStatus').textContent = "File registered successfully";
+
+        // Update Original Document Preview Panel
+        updateReportPreview();
+
+        // Trigger auto metadata OCR immediately
+        autoExtractPatientMetadata();
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearSelectedFile() {
+      if (state.selectedFile && state.selectedFile.objectUrl) {
+        URL.revokeObjectURL(state.selectedFile.objectUrl);
+      }
+      state.selectedFile = null;
+      document.getElementById('fileInput').value = "";
+      document.getElementById('fileInfoCard').classList.add('hidden');
+      document.getElementById('uploadStatus').textContent = "Click to select or drop report here";
+      updateReportPreview();
+      triggerToast("Selected file removed.", "info");
+    }
+
+    async function runFetchWithBackoff(options, payloadPreparer) {
+      const delays = [1000, 2000, 4000];
+      const fallbackModels = [
+        document.getElementById('modelSelection').value,
+        'gemini-3-flash-preview', 
+        'gemini-2.5-flash', 
+        'gemini-1.5-flash'
+      ];
+      const modelsToTry = [...new Set(fallbackModels)].filter(Boolean);
+      let lastErrorMessage = "";
+
+      for (let modelIndex = 0; modelIndex < modelsToTry.length; modelIndex++) {
+        const activeModel = modelsToTry[modelIndex];
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const targetKey = state.apiKey.trim() || apiKey;
+            
+            if (!targetKey) {
+              throw new Error("No API key detected. Please configure a custom key or verify your environment workspace.");
+            }
+
+            const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:generateContent?key=${encodeURIComponent(targetKey)}`;
+            const payload = payloadPreparer(activeModel);
+
+            const response = await fetch(targetUrl, {
+              ...options,
+              body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              setConnectedUI(true, (state.apiKey.trim() ? "Custom Key (" : "Workspace Key (") + activeModel + ")");
+              document.getElementById('modelSelection').value = activeModel; 
+              return data;
+            }
+
+            const errText = await response.text();
+            let parsedErr = {};
+            try { parsedErr = JSON.parse(errText); } catch(e) {}
+            
+            const errStatus = response.status;
+            const errMsg = parsedErr.error?.message || "Unknown API response parameters";
+            lastErrorMessage = `Status ${errStatus}: ${errMsg}`;
+
+            if (errStatus === 401) {
+              throw new Error(`Authentication failure (401): ${errMsg}`);
+            }
+
+            if (errStatus === 503 || errStatus === 429) {
+              triggerToast(`Model ${activeModel} experiencing load bounds. Attempting fallback...`, "warning");
+              break; 
+            }
+          } catch (e) {
+            lastErrorMessage = e.message;
+            if (e.message.includes("Authentication failure") || e.message.includes("No API key")) {
+              throw e; 
+            }
+            await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+          }
+        }
+      }
+
+      throw new Error(`All Gemini failover queues collapsed. Details: ${lastErrorMessage}`);
+    }
+
+    async function testConnection() {
+      const activeKey = state.apiKey.trim() || apiKey;
+      if (!activeKey) {
+        triggerToast("Please input a valid Google Gemini API Key or rely on Workspace Active mode.", "warning");
+        return;
+      }
+      setConnectedUI(false, "Verifying...");
+      try {
+        const data = await runFetchWithBackoff({
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        }, (selectedModel) => ({
+          contents: [{ parts: [{ text: "Respond with 'Connected'." }] }]
+        }));
+
+        if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+          triggerToast("Gemini verified and successfully connected!", "success");
+        } else {
+          throw new Error("Invalid schema structure returned from active model endpoint.");
+        }
+      } catch (e) {
+        console.error(e);
+        setConnectedUI(false, "Connection Failed");
+        triggerToast(`Connection failed: ${e.message}`, "error");
+      }
+    }
+
+    async function autoExtractPatientMetadata() {
+      if (!state.selectedFile) return;
+      const targetKey = state.apiKey.trim() || apiKey;
+      if (!targetKey) {
+        triggerToast("Connect/verify API Key coordinates to auto-extract metadata.", "warning");
+        return;
+      }
+
+      const loader = document.getElementById('extractionLoader');
+      loader.classList.remove('hidden');
+
+      try {
+        const extractionPrompt = `Analyze this uploaded clinical lab document and extract findings.
+Return your response strictly as a JSON object inside valid brackets with this structure (do not include markdown wrapping blocks, backticks, or any trailing commentary outside of the raw JSON payload):
+{
+  "name": "Extracted Patient Name",
+  "age": "Extracted age",
+  "gender": "Female, Male, Child, or Not provided",
+  "date": "YYYY-MM-DD",
+  "extractedText": "Highly detailed transcript of every test parameters, numeric values, units of measurements, and reference intervals."
+}`;
+
+        const data = await runFetchWithBackoff({
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        }, (selectedModel) => ({
+          contents: [{
+            parts: [
+              { text: extractionPrompt },
+              {
+                inlineData: {
+                  mimeType: state.selectedFile.type,
+                  data: state.selectedFile.base64
+                }
+              }
+            ]
+          }]
+        }));
+
+        let rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        rawResponse = rawResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+        
+        const parsed = JSON.parse(rawResponse);
+        
+        if (parsed.name) document.getElementById('patientName').value = parsed.name;
+        if (parsed.age) document.getElementById('age').value = parsed.age;
+        if (parsed.gender) document.getElementById('gender').value = parsed.gender;
+        if (parsed.date) document.getElementById('reportDate').value = parsed.date;
+        if (parsed.extractedText) document.getElementById('reportText').value = parsed.extractedText;
+
+        state.patientInfoExtracted = true;
+        triggerToast("Metadata parsed successfully!", "success");
+      } catch (e) {
+        console.error("Auto extraction failure: ", e);
+        triggerToast("Auto extraction failed. Content remains available for manual entry.", "error");
+      } finally {
+        loader.classList.add('hidden');
+      }
+    }
+
+    async function analyzeReport() {
+      const activeKey = state.apiKey.trim() || apiKey;
+      const reportText = document.getElementById('reportText').value.trim();
+
+      if (!activeKey) {
+        triggerToast("Please input a valid key or wait for Workspace active status confirmation.", "warning");
+        return;
+      }
+      if (!reportText && !state.selectedFile) {
+        triggerToast("Please upload a file or write clinical values.", "warning");
+        return;
+      }
+
+      const outputBox = document.getElementById('interpretationResult');
+      outputBox.innerHTML = `
+        <div class="flex items-center justify-center py-12 gap-3 flex-col">
+          <div class="spinner"></div>
+          <span class="font-bold text-slate-700 text-xs">Analyzing indicators using Live Gemini Failover Module...</span>
+          <span class="text-[10px] text-slate-400">Comparing inputs and generating healthy recommendations.</span>
+        </div>`;
+
+      try {
+        const contextPrompt = `Please perform a highly detailed clinical lab evaluation on this patient profile.
+Patient Profile: ${document.getElementById('patientName').value || "Not provided"}
+Age: ${document.getElementById('age').value || "Not provided"}
+Gender: ${document.getElementById('gender').value || "Not provided"}
+Timeline: ${document.getElementById('reportDate').value || "Not provided"}
+Symptoms: ${document.getElementById('symptoms').value || "None specified"}
+
+Diagnostic Text parameters:
+${reportText || "None pasted"}
+
+Instructions:
+Identify metabolic abnormalities, provide reference context, detail lifestyle advice, configure doctor coordinates prompts, and apply the required output formatting strictly.`;
+
+        const data = await runFetchWithBackoff({
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        }, (selectedModel) => {
+          let parts = [{ text: contextPrompt }];
+          if (state.selectedFile) {
+            parts.push({
+              inlineData: {
+                mimeType: state.selectedFile.type,
+                data: state.selectedFile.base64
+              }
+            });
+          }
+          return {
+            contents: [{ role: "user", parts: parts }],
+            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] }
+          };
+        });
+
+        const interpretation = data.candidates?.[0]?.content?.parts?.[0]?.text || "No output returned.";
+        state.lastAnalysis = interpretation;
+        outputBox.textContent = interpretation;
+
+        addChatMessage("ai", "I have finished analyzing your diagnostic report! Feel free to ask me follow-up questions about abnormal markers, lifestyle actions, or coordinating with your practitioner.");
+        triggerToast("Interpretation complete!", "success");
+
+      } catch (e) {
+        outputBox.textContent = `Interpretation pipeline failed.\nReason: ${e.message}\n\nPlease check connection credentials and parameter stability.`;
+        triggerToast("Report interpretation failed.", "error");
+      }
+    }
+
+    async function sendChatMessage() {
+      const question = document.getElementById('chatQuestion').value.trim();
+      const activeKey = state.apiKey.trim() || apiKey;
+
+      if (!question) return;
+      if (!activeKey) {
+        triggerToast("Connect API key to query companion.", "warning");
+        return;
+      }
+
+      addChatMessage("user", question);
+      document.getElementById('chatQuestion').value = "";
+
+      const chatBox = document.getElementById('chatMessages');
+      const typingMsg = document.createElement('div');
+      typingMsg.className = "msg ai bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-400 self-start max-w-[90%] flex items-center gap-2";
+      typingMsg.innerHTML = `<span class="spinner" style="width:12px; height:12px; border-width:2px;"></span> Companion is formulating advice...`;
+      chatBox.appendChild(typingMsg);
+      chatBox.scrollTop = chatBox.scrollHeight;
+
+      try {
+        const chatPrompt = `You are a medical care companion advisor assisting a patient.
+Discuss their indicators, context findings, abnormalities, and help prepare them for practitioner visits.
+
+Current Lab Evaluation Context:
+${state.lastAnalysis || "No diagnostic test was analyzed yet."}
+
+Patient Parameters:
+Name: ${document.getElementById('patientName').value}
+Age: ${document.getElementById('age').value}
+Gender: ${document.getElementById('gender').value}
+
+Patient Query: ${question}`;
+
+        const data = await runFetchWithBackoff({
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        }, (selectedModel) => ({
+          contents: [{ role: "user", parts: [{ text: chatPrompt }] }],
+          systemInstruction: { parts: [{ text: "Respond in an empathetic, clean conversational style under 150 words. Focus strictly on user comfort and safety. Do not make solid diagnoses." }] }
+        }));
+
+        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "No reply available.";
+        typingMsg.remove();
+        addChatMessage("ai", reply);
+
+      } catch (e) {
+        typingMsg.remove();
+        addChatMessage("ai", `Chat error encountered: ${e.message}`);
+        triggerToast("Chat formulation failed.", "error");
+      }
+    }
+
+    function addChatMessage(role, text) {
+      const container = document.getElementById('chatMessages');
+      const bubble = document.createElement('div');
+      if (role === "user") {
+        bubble.className = "msg user bg-blue-600 text-white rounded-xl p-3 text-xs self-end max-w-[90%]";
+      } else {
+        bubble.className = "msg ai bg-white border border-slate-200 text-slate-700 rounded-xl p-3 text-xs self-start max-w-[90%]";
+      }
+      bubble.textContent = text;
+      container.appendChild(bubble);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function clearChat() {
+      document.getElementById('chatMessages').innerHTML = `
+        <div class="msg ai bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 self-start max-w-[90%]">
+          Chat logs cleared. Let me know if you have any follow-up questions about abnormal parameters.
+        </div>`;
+      triggerToast("Chat logs cleared.", "info");
+    }
+
+    function clearReportText() {
+      document.getElementById('reportText').value = "";
+    }
+
+    function loadDemoDataset() {
+      document.getElementById('patientName').value = "Jonathan Vance";
+      document.getElementById('age').value = "54";
+      document.getElementById('gender').value = "Male";
+      document.getElementById('reportDate').value = "2026-06-18";
+      document.getElementById('symptoms').value = "Chronic lightheadedness during exertion, general low energy, daily fatigue.";
+      document.getElementById('reportText').value = `COMPREHENSIVE BIO METRICS:
+Hemoglobin: 11.2 g/dL (Low) [Ref: 13.5 - 17.5 g/dL]
+Vitamin D (25-hydroxy): 16.5 ng/mL (Deficient) [Ref: 30.0 - 100.0 ng/mL]
+HbA1c: 5.8 % (Elevated) [Ref: < 5.7 %]
+eGFR: 84 mL/min/1.73m2 [Ref: > 90 mL/min/1.73m2]`;
+
+      triggerToast("Demo parameters loaded. Execute interpretation to test.", "info");
+    }
+
+    function downloadSummary() {
+      const summary = state.lastAnalysis || document.getElementById('interpretationResult').textContent;
+      const patient = document.getElementById('patientName').value || "Patient";
+      const blob = new Blob([summary], { type: "text/plain" });
+      const element = document.createElement("a");
+      element.href = URL.createObjectURL(blob);
+      element.download = `Ailab_Interpretation_${patient.replace(/\s+/g, '_')}.txt`;
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+      triggerToast("Summary downloaded.", "success");
+    }
+
+    function resetWorkspace() {
+      ["patientName", "age", "gender", "reportDate", "symptoms", "reportText"].forEach(id => {
+        document.getElementById(id).value = "";
+      });
+      clearSelectedFile();
+      document.getElementById('interpretationResult').textContent = "Please insert your Gemini API Key above, upload or paste laboratory results, provide symptoms, and press 'Execute Lab Interpretation'.";
+      state.lastAnalysis = "";
+      state.patientInfoExtracted = false;
+      clearChat();
+      triggerToast("Workspace reset complete.", "info");
+    }
+
+    function esc(v) {
+      return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+  </script>
+
+  <style>
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid rgba(59, 130, 246, 0.2);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</body>
+</html>
